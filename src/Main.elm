@@ -2,7 +2,7 @@ module Main exposing (Clue, Direction(..), Flags, Model, Msg(..), Puzzle, init, 
 
 import Array exposing (Array)
 import Browser
-import Browser.Events exposing (onKeyPress)
+import Browser.Events exposing (onKeyDown)
 import Browser.Navigation as Nav exposing (Key)
 import Html exposing (Html, b, div, text)
 import Html.Attributes
@@ -23,6 +23,10 @@ keyDecoder =
 
 toKey : String -> Msg
 toKey string =
+    let
+        x =
+            Debug.log "RAW" string
+    in
     case String.uncons string of
         Just ( char, "" ) ->
             KeyPress (Character char)
@@ -442,13 +446,87 @@ update message model =
         KeyPress key ->
             case key of
                 Character c ->
+                    let
+                        x =
+                            Debug.log "character" c
+                    in
                     ( progressSelection (fillSquare model c), Cmd.none )
 
-                _ ->
-                    ( model, Cmd.none )
+                Control s ->
+                    case s of
+                        "ArrowLeft" ->
+                            ( model, Cmd.none )
+
+                        "ArrowRight" ->
+                            let
+                                see =
+                                    Debug.log "GOT HERE" s
+                            in
+                            ( nextClue model, Cmd.none )
+
+                        "ArrowDown" ->
+                            ( nextClue model, Cmd.none )
+
+                        "ArrowUp" ->
+                            ( model, Cmd.none )
+
+                        _ ->
+                            ( model, Cmd.none )
 
         _ ->
             ( model, Cmd.none )
+
+
+nextClue : Model -> Model
+nextClue model =
+    case model.player.activeClue of
+        Just c ->
+            let
+                player =
+                    model.player
+
+                newPlayer =
+                    { player | activeClue = clueAfter model c.number c.direction }
+            in
+            { model | player = newPlayer }
+
+        Nothing ->
+            let
+                player =
+                    model.player
+
+                newPlayer =
+                    { player | activeClue = clueAfter model 0 Across }
+            in
+            { model | player = newPlayer }
+
+
+clueAfter : Model -> Int -> Direction -> Maybe Clue
+clueAfter model number direction =
+    let
+        otherDirectionClues =
+            model.puzzle.clues
+                |> List.filter (\a -> a.direction == toggleDirection direction)
+    in
+    model.puzzle.clues
+        |> List.filter (\a -> a.number > number && a.direction == direction)
+        |> reverseArgs List.append otherDirectionClues
+        |> List.head
+
+
+reverseArgs : (a -> a -> a) -> a -> a -> a
+reverseArgs fn a1 a2 =
+    fn a2 a1
+
+
+toggleDirection : Direction -> Direction
+toggleDirection direction =
+    case direction of
+        Across ->
+            Down
+
+        Down ->
+            Across
 
 
 activeClue : Model -> Maybe Clue
@@ -522,13 +600,7 @@ progressPlayerSelection model =
     in
     case player.selection of
         Just ( x, y ) ->
-            case player.selectionDirection of
-                -- TODO check we are still within the same clue. and not out of bounds.
-                Across ->
-                    { player | selection = nextSpot model }
-
-                Down ->
-                    { player | selection = nextSpot model }
+            { player | selection = nextSpot model }
 
         Nothing ->
             player
@@ -600,7 +672,7 @@ fillAt model char ( x, y ) =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    onKeyPress keyDecoder
+    onKeyDown keyDecoder
 
 
 main : Program Flags Model Msg
