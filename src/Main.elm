@@ -23,10 +23,6 @@ keyDecoder =
 
 toKey : String -> Msg
 toKey string =
-    let
-        x =
-            Debug.log "RAW" string
-    in
     case String.uncons string of
         Just ( char, "" ) ->
             KeyPress (Character char)
@@ -446,32 +442,24 @@ update message model =
         KeyPress key ->
             case key of
                 Character c ->
-                    let
-                        x =
-                            Debug.log "character" c
-                    in
                     ( progressSelection (fillSquare model c), Cmd.none )
 
                 Control s ->
                     case s of
-                        "ArrowLeft" ->
-                            ( model, Cmd.none )
-
                         "ArrowRight" ->
-                            let
-                                see =
-                                    Debug.log "GOT HERE" s
-                            in
                             ( nextClue model, Cmd.none )
 
                         "ArrowDown" ->
                             ( nextClue model, Cmd.none )
 
                         "ArrowUp" ->
-                            ( model, Cmd.none )
+                            ( prevClue model, Cmd.none )
+
+                        "ArrowLeft" ->
+                            ( prevClue model, Cmd.none )
 
                         _ ->
-                            ( model, Cmd.none )
+                            ( prevClue model, Cmd.none )
 
         _ ->
             ( model, Cmd.none )
@@ -479,26 +467,63 @@ update message model =
 
 nextClue : Model -> Model
 nextClue model =
+    seekClue clueAfter model
+
+
+prevClue : Model -> Model
+prevClue model =
+    seekClue clueBefore model
+
+
+seekClue : (Model -> Int -> Direction -> Maybe Clue) -> Model -> Model
+seekClue seekFn model =
     case model.player.activeClue of
         Just c ->
             let
                 player =
                     model.player
-
-                newPlayer =
-                    { player | activeClue = clueAfter model c.number c.direction }
             in
-            { model | player = newPlayer }
+            case seekFn model c.number c.direction of
+                Just clue ->
+                    let
+                        newPlayer =
+                            { player | activeClue = Just clue, selection = Just ( clue.x, clue.y ), selectionDirection = clue.direction }
+                    in
+                    { model | player = newPlayer }
+
+                Nothing ->
+                    model
 
         Nothing ->
             let
                 player =
                     model.player
-
-                newPlayer =
-                    { player | activeClue = clueAfter model 0 Across }
             in
-            { model | player = newPlayer }
+            case seekFn model 0 Across of
+                Just clue ->
+                    let
+                        newPlayer =
+                            { player | activeClue = Just clue, selection = Just ( clue.x, clue.y ), selectionDirection = clue.direction }
+                    in
+                    { model | player = newPlayer }
+
+                Nothing ->
+                    model
+
+
+clueBefore : Model -> Int -> Direction -> Maybe Clue
+clueBefore model number direction =
+    let
+        otherDirectionClues =
+            model.puzzle.clues
+                |> List.reverse
+                |> List.filter (\a -> a.direction == toggleDirection direction)
+    in
+    model.puzzle.clues
+        |> List.reverse
+        |> List.filter (\a -> a.number < number && a.direction == direction)
+        |> reverseArgs List.append otherDirectionClues
+        |> List.head
 
 
 clueAfter : Model -> Int -> Direction -> Maybe Clue
