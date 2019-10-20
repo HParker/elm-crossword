@@ -23,6 +23,10 @@ keyDecoder =
 
 toKey : String -> Msg
 toKey string =
+    let
+        rawKey =
+            Debug.log "RAW: " string
+    in
     case String.uncons string of
         Just ( char, "" ) ->
             KeyPress (Character char)
@@ -458,11 +462,26 @@ update message model =
                         "ArrowLeft" ->
                             ( prevClue model, Cmd.none )
 
+                        "Shift" ->
+                            ( changeDirection model, Cmd.none )
+
                         _ ->
-                            ( prevClue model, Cmd.none )
+                            ( model, Cmd.none )
 
         _ ->
             ( model, Cmd.none )
+
+
+changeDirection : Model -> Model
+changeDirection model =
+    let
+        player =
+            model.player
+
+        newPlayer =
+            { player | selectionDirection = toggleDirection player.selectionDirection }
+    in
+    { model | player = newPlayer } |> seekClue clueUnder
 
 
 nextClue : Model -> Model
@@ -483,11 +502,15 @@ seekClue seekFn model =
                 player =
                     model.player
             in
-            case seekFn model c.number c.direction of
+            case seekFn model c.number player.selectionDirection of
                 Just clue ->
                     let
                         newPlayer =
-                            { player | activeClue = Just clue, selection = Just ( clue.x, clue.y ), selectionDirection = clue.direction }
+                            { player
+                                | activeClue = Just clue
+                                , selection = nextOpenSpace clue model.puzzle.grid
+                                , selectionDirection = clue.direction
+                            }
                     in
                     { model | player = newPlayer }
 
@@ -503,12 +526,68 @@ seekClue seekFn model =
                 Just clue ->
                     let
                         newPlayer =
-                            { player | activeClue = Just clue, selection = Just ( clue.x, clue.y ), selectionDirection = clue.direction }
+                            { player
+                                | activeClue = Just clue
+                                , selection = nextOpenSpace clue model.puzzle.grid
+                                , selectionDirection = clue.direction
+                            }
                     in
                     { model | player = newPlayer }
 
                 Nothing ->
                     model
+
+
+nextOpenSpace : Clue -> Array (Array Square) -> Maybe ( Int, Int )
+nextOpenSpace clue grid =
+    List.filter (\a -> not (hasLetter grid clue a)) (possibleSelections clue)
+        |> List.head
+
+
+possibleSelections : Clue -> List ( Int, Int )
+possibleSelections clue =
+    case clue.direction of
+        Across ->
+            List.range clue.x (clue.x + String.length clue.answer - 1)
+                |> List.map (\a -> ( a, clue.y ))
+
+        Down ->
+            List.range clue.y (clue.y + String.length clue.answer - 1)
+                |> List.map (\a -> ( clue.x, a ))
+
+
+hasLetter : Array (Array Square) -> Clue -> ( Int, Int ) -> Bool
+hasLetter grid clue spot =
+    let
+        square =
+            grid
+                |> Array.get (Tuple.second spot)
+                |> Maybe.withDefault Array.empty
+                |> Array.get (Tuple.first spot)
+    in
+    case square of
+        Just (Filled _) ->
+            True
+
+        _ ->
+            False
+
+
+clueUnder : Model -> Int -> Direction -> Maybe Clue
+clueUnder model number direction =
+    let
+        otherDirectionClues =
+            model.puzzle.clues
+                |> List.reverse
+                |> List.filter (\a -> a.direction == toggleDirection direction)
+                |> List.filter (\a -> not (wordFilled model.puzzle.grid a))
+    in
+    model.puzzle.clues
+        |> List.reverse
+        |> List.filter (\a -> a.number == number && a.direction == direction)
+        |> List.filter (\a -> not (wordFilled model.puzzle.grid a))
+        |> reverseArgs List.append otherDirectionClues
+        |> List.head
 
 
 clueBefore : Model -> Int -> Direction -> Maybe Clue
@@ -518,12 +597,24 @@ clueBefore model number direction =
             model.puzzle.clues
                 |> List.reverse
                 |> List.filter (\a -> a.direction == toggleDirection direction)
+                |> List.filter (\a -> not (wordFilled model.puzzle.grid a))
     in
     model.puzzle.clues
         |> List.reverse
         |> List.filter (\a -> a.number < number && a.direction == direction)
+        |> List.filter (\a -> not (wordFilled model.puzzle.grid a))
         |> reverseArgs List.append otherDirectionClues
         |> List.head
+
+
+wordFilled : Array (Array Square) -> Clue -> Bool
+wordFilled grid clue =
+    case nextOpenSpace clue grid of
+        Just _ ->
+            False
+
+        Nothing ->
+            True
 
 
 clueAfter : Model -> Int -> Direction -> Maybe Clue
@@ -532,9 +623,11 @@ clueAfter model number direction =
         otherDirectionClues =
             model.puzzle.clues
                 |> List.filter (\a -> a.direction == toggleDirection direction)
+                |> List.filter (\a -> not (wordFilled model.puzzle.grid a))
     in
     model.puzzle.clues
         |> List.filter (\a -> a.number > number && a.direction == direction)
+        |> List.filter (\a -> not (wordFilled model.puzzle.grid a))
         |> reverseArgs List.append otherDirectionClues
         |> List.head
 
@@ -582,20 +675,13 @@ moveSelection location model =
     case player.selection of
         Just sel ->
             if sel == location then
-                case player.selectionDirection of
-                    Across ->
-                        let
-                            newPlayer =
-                                { player | selectionDirection = Down }
-                        in
-                        { model | player = newPlayer }
-
-                    Down ->
-                        let
-                            newPlayer =
-                                { player | selectionDirection = Across }
-                        in
-                        { model | player = newPlayer }
+                let
+                    newPlayer =
+                        { player
+                            | selectionDirection = toggleDirection player.selectionDirection
+                        }
+                in
+                { model | player = newPlayer }
 
             else
                 let
